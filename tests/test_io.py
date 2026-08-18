@@ -26,6 +26,22 @@ def test_binary_gaussian_ply_header_and_loading(tmp_path: Path) -> None:
     assert np.all(scene.opacity > 0.5)
     assert np.all(np.isfinite(scene.covariance_a))
     assert scene.radius > 0
+    assert scene.sh_coefficients is None
+
+
+def test_degree_three_sh_coefficients_are_loaded_in_rgb_order(tmp_path: Path) -> None:
+    source = write_gaussian_ply(tmp_path / "degree-three.ply", count=5, sh_degree=3)
+
+    header = read_ply_header(source)
+    scene = load_scene(source, budget=3)
+
+    assert header.sh_degree == 3
+    assert inspect_source(source).sh_degree == 3
+    assert scene.sh_coefficients is not None
+    assert scene.sh_coefficients.shape == (3, 15, 3)
+    assert scene.sh_coefficients.dtype == np.float32
+    assert np.allclose(scene.sh_coefficients[:, 0, :], (0.01, 0.16, 0.31))
+    assert np.allclose(scene.sh_coefficients[:, 14, :], (0.15, 0.30, 0.45))
 
 
 def test_ascii_rgb_point_cloud_loading(tmp_path: Path) -> None:

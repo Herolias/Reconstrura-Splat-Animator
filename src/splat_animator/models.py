@@ -64,6 +64,8 @@ class AnimationSettings:
     exposure: float = 0.0
     background: str = "#080b11"
     background_gradient: float = 0.16
+    transparent_background: bool = False
+    premultiplied_alpha: bool = False
 
     codec: str = "h264"
     quality: int = 18
@@ -163,6 +165,10 @@ class AnimationSettings:
             raise ValueError("Splat pixel limits are invalid")
         if not isinstance(self.background, str):
             raise ValueError("Background must be a hex color string")
+        if not isinstance(self.transparent_background, bool):
+            raise ValueError("Transparent background must be true or false")
+        if not isinstance(self.premultiplied_alpha, bool):
+            raise ValueError("Premultiplied alpha must be true or false")
         background = self.background.removeprefix("#")
         if len(background) not in {3, 6} or any(
             character not in "0123456789abcdefABCDEF" for character in background
@@ -170,6 +176,10 @@ class AnimationSettings:
             raise ValueError("Background must be a 3- or 6-digit hex color")
         if self.codec not in {"h264", "h265", "prores", "vp9"}:
             raise ValueError(f"Unknown codec: {self.codec}")
+        if self.transparent_background and self.codec != "vp9":
+            raise ValueError("Transparent backgrounds require VP9 output")
+        if self.premultiplied_alpha and not self.transparent_background:
+            raise ValueError("Premultiplied alpha requires a transparent background")
         if not isinstance(self.quality, int) or isinstance(self.quality, bool):
             raise ValueError("Codec quality must be an integer")
         maximum_quality = 63 if self.codec == "vp9" else 51

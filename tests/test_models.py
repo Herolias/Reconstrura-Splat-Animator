@@ -37,6 +37,9 @@ def test_one_way_point_to_splat_and_json_round_trip(tmp_path) -> None:
         rotation_center_y=-0.4,
         rotation_center_z=0.6,
         transition_effect="wave",
+        transparent_background=True,
+        premultiplied_alpha=True,
+        codec="vp9",
     )
     assert settings.representation_at(0.5) == RepresentationFrame(0.0, 0.0, 0.0)
     assert settings.representation_at(3.0) == RepresentationFrame(0.0, 1.0, 0.5)
@@ -78,6 +81,22 @@ def test_validation_rejects_odd_video_dimensions() -> None:
         replace(AnimationSettings(), transition_effect="teleport").validate()
     with pytest.raises(ValueError, match="rotation center mode"):
         replace(AnimationSettings(), rotation_center_mode="selection").validate()
+    with pytest.raises(ValueError, match="require VP9"):
+        replace(AnimationSettings(), transparent_background=True).validate()
+    with pytest.raises(ValueError, match="require VP9"):
+        replace(
+            AnimationSettings(),
+            transparent_background=True,
+            codec="prores",
+        ).validate()
+    replace(
+        AnimationSettings(),
+        transparent_background=True,
+        codec="vp9",
+    ).validate()
+    with pytest.raises(ValueError, match="requires a transparent background"):
+        replace(AnimationSettings(), premultiplied_alpha=True).validate()
+    assert not AnimationSettings().premultiplied_alpha
 
 
 def test_validation_rejects_non_boolean_seamless_loop(tmp_path) -> None:

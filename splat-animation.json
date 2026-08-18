@@ -35,6 +35,7 @@
   "exposure": 0.0,
   "background": "#080b11",
   "background_gradient": 0.16,
+  "transparent_background": false,
   "codec": "h264",
   "quality": 18
 }

@@ -62,10 +62,16 @@ class PlyHeader:
 
     @property
     def sh_degree(self) -> int:
-        count = sum(name.startswith("f_rest_") for name in self.property_names)
-        if count <= 0:
-            return 0
-        return max(0, round(math.sqrt(count / 3 + 1) - 1))
+        names = set(self.property_names)
+        count = sum(name.startswith("f_rest_") for name in names)
+        maximum = max(0, math.isqrt(count // 3 + 1) - 1)
+        degree = 0
+        for candidate in range(1, maximum + 1):
+            required = 3 * ((candidate + 1) ** 2 - 1)
+            if not all(f"f_rest_{index}" in names for index in range(required)):
+                break
+            degree = candidate
+        return degree
 
 
 @dataclass(frozen=True)
@@ -117,6 +123,9 @@ class SceneData:
     radius: float
     source_info: SourceInfo
     original_count: int
+    # Coefficient-major RGB values for SH bands 1 through 3. The DC term is
+    # already represented by ``colors`` so non-SH sources keep this as None.
+    sh_coefficients: np.ndarray | None = None
 
     @property
     def count(self) -> int:
@@ -428,7 +437,8 @@ def _load_ply(path: Path, budget: int | None) -> SceneData:
         positions = positions[finite]
     positions = np.asarray(positions, dtype=np.float32)
 
-    if {"f_dc_0", "f_dc_1", "f_dc_2"}.issubset(names):
+    has_dc_sh = {"f_dc_0", "f_dc_1", "f_dc_2"}.issubset(names)
+    if has_dc_sh:
         sh_c0 = 0.28209479177387814
         colors = 0.5 + sh_c0 * np.column_stack(
             (_field(records, "f_dc_0"), _field(records, "f_dc_1"), _field(records, "f_dc_2"))
@@ -452,7 +462,28 @@ def _load_ply(path: Path, budget: int | None) -> SceneData:
     else:
         colors = np.full((records.shape[0], 3), 0.78, dtype=np.float32)
     colors = np.nan_to_num(colors, nan=0.5, posinf=1.0, neginf=0.0)
-    colors = np.clip(colors, 0.0, 1.0).astype(np.float32)
+    if not has_dc_sh:
+        colors = np.clip(colors, 0.0, 1.0)
+    colors = colors.astype(np.float32)
+
+    sh_degree = min(header.sh_degree, 3) if has_dc_sh else 0
+    sh_coefficients: np.ndarray | None = None
+    if sh_degree:
+        coefficient_count = (sh_degree + 1) ** 2 - 1
+        # 3DGS PLY files store all coefficients for red, then green, then blue.
+        # The GPU texture is coefficient-major so one fetch returns an RGB value.
+        sh_coefficients = np.empty(
+            (records.shape[0], coefficient_count, 3),
+            dtype=np.float32,
+        )
+        for channel in range(3):
+            for coefficient in range(coefficient_count):
+                field_index = channel * coefficient_count + coefficient
+                sh_coefficients[:, coefficient, channel] = _field(
+                    records,
+                    f"f_rest_{field_index}",
+                )
+        np.nan_to_num(sh_coefficients, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
 
     if "opacity" in names:
         opacity = _sigmoid(_field(records, "opacity"))
@@ -513,6 +544,7 @@ def _load_ply(path: Path, budget: int | None) -> SceneData:
         radius=radius,
         source_info=info,
         original_count=header.vertex_count,
+        sh_coefficients=sh_coefficients,
     )
 
 

@@ -4,6 +4,11 @@ Notable changes to this project are documented here.
 
 ## Unreleased
 
+- Added view-dependent spherical harmonics rendering through degree 3.
+- Added transparent-background preview and VP9 WebM export.
+- Added a premultiplied-alpha fallback that switches on with transparent output
+  for alpha-blind video players, with a straight-alpha compositing opt-out.
+
 ## 0.1.0 - 2026-08-18
 
 - Initial open-source release.

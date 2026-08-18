@@ -134,6 +134,34 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--splat-opacity", type=float)
     parser.add_argument("--exposure", type=float)
     parser.add_argument("--background", help="Hex color, for example #080b11")
+    background = parser.add_mutually_exclusive_group()
+    background.add_argument(
+        "--transparent-background",
+        action="store_true",
+        dest="transparent_background",
+        default=None,
+        help="Export alpha (requires VP9)",
+    )
+    background.add_argument(
+        "--opaque-background",
+        action="store_false",
+        dest="transparent_background",
+        help="Render the selected background color",
+    )
+    alpha_mode = parser.add_mutually_exclusive_group()
+    alpha_mode.add_argument(
+        "--premultiplied-alpha",
+        action="store_true",
+        dest="premultiplied_alpha",
+        default=None,
+        help="Store black-composited RGB for alpha-blind players (default)",
+    )
+    alpha_mode.add_argument(
+        "--straight-alpha",
+        action="store_false",
+        dest="premultiplied_alpha",
+        help="Store standard straight RGB for alpha compositing",
+    )
     parser.add_argument("--codec", choices=("h264", "h265", "prores", "vp9"))
     parser.add_argument("--quality", type=int, help="CRF for H.264/H.265/VP9")
     return parser
@@ -167,6 +195,8 @@ def _settings_from_args(args: argparse.Namespace) -> AnimationSettings:
     }
     if args.round_trip is not None and args.transformation_enabled is None:
         updates["transformation_enabled"] = True
+    if args.transparent_background is True and args.premultiplied_alpha is None:
+        updates["premultiplied_alpha"] = True
     settings = replace(settings, **updates)
     settings.validate()
     return settings

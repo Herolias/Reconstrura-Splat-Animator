@@ -7,3 +7,15 @@ def test_direction_option_updates_spin_direction() -> None:
     settings = _settings_from_args(arguments)
 
     assert settings.spin_direction == "counter_clockwise"
+
+
+def test_transparent_background_option_uses_alpha_capable_codec() -> None:
+    arguments = _parser().parse_args(
+        ["--transparent-background", "--codec", "vp9"]
+    )
+
+    settings = _settings_from_args(arguments)
+
+    assert settings.transparent_background
+    assert settings.premultiplied_alpha
+    assert settings.codec == "vp9"

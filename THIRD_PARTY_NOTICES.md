@@ -43,6 +43,14 @@ The [FFmpeg legal page](https://ffmpeg.org/legal.html) and
 [license documentation](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html)
 explain how build flags and external libraries change the binary's obligations.
 
+Transparent output requests the external `libvpx-vp9` encoder. libvpx is not
+copied into this repository or its Python distributions and is separately
+available under a BSD-style license with patent-license terms. A distributor
+that bundles an FFmpeg build containing libvpx must preserve the notices and
+audit the exact bundled build.
+See the upstream libvpx [license](https://chromium.googlesource.com/webm/libvpx/+/main/LICENSE)
+and [patent grant](https://chromium.googlesource.com/webm/libvpx/+/main/PATENTS).
+
 Codec patent or royalty rules are separate from copyright licenses and vary by
 jurisdiction and use. Anyone distributing FFmpeg, a desktop application bundle,
 or encoded media is responsible for reviewing the exact codecs and binaries
@@ -51,5 +59,6 @@ they distribute.
 GPU drivers and system OpenGL implementations are supplied by the user's
 operating system or hardware vendor and remain under their own terms.
 
-See [TRADEMARKS.md](TRADEMARKS.md) for the bundled Reconstrura logo and name.
-This notice is informational and is not legal advice.
+See [TRADEMARKS.md](TRADEMARKS.md) for trademark attribution and the terms for
+the bundled Reconstrura logo. This notice is informational and is not legal
+advice.

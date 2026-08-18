@@ -223,6 +223,21 @@ class PreviewCanvas(QLabel):
         if self._display_pixmap is not None:
             x = (self.width() - self._display_pixmap.width()) // 2
             y = (self.height() - self._display_pixmap.height()) // 2
+            if self._display_pixmap.hasAlphaChannel():
+                tile = 14
+                width = self._display_pixmap.width()
+                height = self._display_pixmap.height()
+                painter.fillRect(x, y, width, height, QColor("#252b35"))
+                for row in range(0, height, tile):
+                    for column in range(0, width, tile):
+                        if (row // tile + column // tile) % 2 == 0:
+                            painter.fillRect(
+                                x + column,
+                                y + row,
+                                min(tile, width - column),
+                                min(tile, height - row),
+                                QColor("#3a424f"),
+                            )
             painter.drawPixmap(x, y, self._display_pixmap)
         elif self._image is None:
             painter.setRenderHint(QPainter.Antialiasing)
@@ -364,13 +379,33 @@ class RenderWorker(QObject):
             width = max(16, width - width % 2)
             height = max(16, height - height % 2)
             preview_settings = replace(settings, width=width, height=height)
-            data = self.renderer.render_rgb(
+            data = self.renderer.render_frame(
                 preview_settings,
                 seconds,
                 sort_depth=sort_depth,
             )
-            array = np.frombuffer(data, dtype=np.uint8).reshape(height, width, 3)[::-1].copy()
-            image = QImage(array.data, width, height, width * 3, QImage.Format_RGB888).copy()
+            components = 4 if preview_settings.transparent_background else 3
+            array = (
+                np.frombuffer(data, dtype=np.uint8)
+                .reshape(height, width, components)[::-1]
+                .copy()
+            )
+            image_format = (
+                (
+                    QImage.Format_RGBA8888_Premultiplied
+                    if preview_settings.premultiplied_alpha
+                    else QImage.Format_RGBA8888
+                )
+                if preview_settings.transparent_background
+                else QImage.Format_RGB888
+            )
+            image = QImage(
+                array.data,
+                width,
+                height,
+                width * components,
+                image_format,
+            ).copy()
             self.previewReady.emit(image)
         except Exception as exc:
             self.failed.emit(f"Preview failed: {exc}")
@@ -1014,6 +1049,23 @@ class MainWindow(QMainWindow):
         background_layout.addWidget(self.background_button, 1)
         background_layout.addWidget(self.gradient)
         self._field(layout, "Background color / gradient", background_row)
+        self.transparent_background = QCheckBox("Transparent background")
+        self.transparent_background.setToolTip(
+            "Exports an alpha channel with VP9 WebM. "
+            "Enabling this selects VP9 automatically. "
+            "VLC, Dragon Player, and some other players ignore WebM alpha and may "
+            "show fuzzy edges; use an alpha-aware editor or compositor to verify it."
+        )
+        layout.addWidget(self.transparent_background)
+        self.premultiplied_alpha = QCheckBox("Black fallback for alpha-blind players")
+        self.premultiplied_alpha.setToolTip(
+            "Switches on with Transparent background so VLC and similar players "
+            "display clean edges on black. Trade-off: it stores premultiplied RGB, "
+            "so editors expecting straight alpha may multiply it again and produce "
+            "dark edges. Disable this option for standard alpha compositing."
+        )
+        self.premultiplied_alpha.setEnabled(False)
+        layout.addWidget(self.premultiplied_alpha)
         self.inspector_layout.addWidget(self.look_card)
 
     def _build_output_card(self) -> None:
@@ -1097,6 +1149,8 @@ class MainWindow(QMainWindow):
         self.load_scene_button.clicked.connect(self._load_scene)
         self.output_browse.clicked.connect(self._choose_output)
         self.background_button.clicked.connect(self._choose_background)
+        self.transparent_background.toggled.connect(self._transparency_changed)
+        self.premultiplied_alpha.toggled.connect(self._settings_changed)
         self.render_button.clicked.connect(self._start_render)
         self.cancel_button.clicked.connect(self._cancel_render)
         self.load_preset_button.clicked.connect(self._load_preset)
@@ -1206,6 +1260,8 @@ class MainWindow(QMainWindow):
             exposure=self.exposure.value(),
             background=self._background,
             background_gradient=self.gradient.value(),
+            transparent_background=self.transparent_background.isChecked(),
+            premultiplied_alpha=self.premultiplied_alpha.isChecked(),
             codec=str(self.codec_combo.currentData()),
             quality=self.quality_spin.value(),
         )
@@ -1263,6 +1319,8 @@ class MainWindow(QMainWindow):
         self._background = settings.background
         self.gradient.setValue(settings.background_gradient)
         self._set_combo(self.codec_combo, settings.codec)
+        self.transparent_background.setChecked(settings.transparent_background)
+        self.premultiplied_alpha.setChecked(settings.premultiplied_alpha)
         self.quality_spin.setValue(settings.quality)
         self._update_background_button()
         self._match_resolution_preset()
@@ -1798,6 +1856,15 @@ class MainWindow(QMainWindow):
             f"text-align: left; padding-left: 34px; background-color: {self._background};"
         )
 
+    def _transparency_changed(self, checked: bool) -> None:
+        if checked and self.codec_combo.currentData() != "vp9":
+            self._set_combo(self.codec_combo, "vp9")
+        self.premultiplied_alpha.setChecked(checked)
+        self.premultiplied_alpha.setEnabled(checked)
+        self.background_button.setEnabled(not checked)
+        self.gradient.setEnabled(not checked)
+        self._settings_changed()
+
     def _resolution_preset_changed(self, index: int) -> None:
         value = self.resolution_preset.itemData(index)
         if value:
@@ -1815,6 +1882,8 @@ class MainWindow(QMainWindow):
     def _codec_changed(self, *_args: object) -> None:
         path = Path(self.output_line.text()) if self.output_line.text() else None
         codec = str(self.codec_combo.currentData())
+        if self.transparent_background.isChecked() and codec != "vp9":
+            self.transparent_background.setChecked(False)
         if path:
             self.output_line.setText(str(path.with_suffix(expected_extension(codec))))
         self.quality_spin.setMaximum(63 if codec == "vp9" else 51)

@@ -24,6 +24,16 @@ def test_main_window_starts_and_stops_render_thread() -> None:
     assert window.windowTitle() == "Reconstrura Splat Animator"
     assert not window.windowIcon().isNull()
     assert window.worker_thread.isRunning()
+    assert not window.premultiplied_alpha.isChecked()
+    assert not window.premultiplied_alpha.isEnabled()
+    window.transparent_background.setChecked(True)
+    application.processEvents()
+    assert window.premultiplied_alpha.isChecked()
+    assert window.premultiplied_alpha.isEnabled()
+    window.transparent_background.setChecked(False)
+    application.processEvents()
+    assert not window.premultiplied_alpha.isChecked()
+    assert not window.premultiplied_alpha.isEnabled()
     assert window.inspector.horizontalScrollBar().maximum() == 0
     assert window.inspector.widget().width() == window.inspector.viewport().width()
     preview_size = window.preview.size()
@@ -158,6 +168,8 @@ def test_main_window_starts_and_stops_render_thread() -> None:
         AnimationSettings(),
         codec="vp9",
         quality=63,
+        transparent_background=True,
+        premultiplied_alpha=True,
         min_splat_pixels=1.25,
         max_splat_pixels=48.0,
     )
@@ -165,8 +177,18 @@ def test_main_window_starts_and_stops_render_thread() -> None:
     restored = window._settings(resolve_loop=False)
     assert window.quality_spin.maximum() == 63
     assert restored.quality == 63
+    assert restored.transparent_background
+    assert restored.premultiplied_alpha
+    assert window.premultiplied_alpha.isEnabled()
+    assert not window.background_button.isEnabled()
+    assert not window.gradient.isEnabled()
     assert restored.min_splat_pixels == 1.25
     assert restored.max_splat_pixels == 48.0
+    window._set_combo(window.codec_combo, "h264")
+    application.processEvents()
+    assert not window.transparent_background.isChecked()
+    assert not window.premultiplied_alpha.isChecked()
+    assert not window.premultiplied_alpha.isEnabled()
     window.close()
     assert not window.worker_thread.isRunning()
 

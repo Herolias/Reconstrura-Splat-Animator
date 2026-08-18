@@ -22,8 +22,12 @@ _VERTEX_SHADER = r"""
 in vec2 in_corner;
 
 uniform sampler2D u_scene_data;
+uniform sampler2D u_sh_data;
 uniform isampler2D u_draw_order;
 uniform int u_scene_texture_width;
+uniform int u_sh_texture_width;
+uniform int u_sh_coefficient_count;
+uniform int u_sh_degree;
 uniform int u_order_texture_width;
 
 uniform mat4 u_model;
@@ -45,6 +49,7 @@ uniform float u_rep_target;
 uniform int u_transition_effect;
 uniform vec3 u_scene_center;
 uniform float u_scene_radius;
+uniform vec3 u_camera_position;
 
 uniform float u_point_radius;
 uniform float u_point_opacity;
@@ -67,6 +72,60 @@ vec4 fetch_scene(int linear_index) {
     return texelFetch(u_scene_data, location, 0);
 }
 
+vec3 fetch_sh(int point_index, int coefficient_index) {
+    int linear_index = point_index * u_sh_coefficient_count + coefficient_index;
+    ivec2 location = ivec2(
+        linear_index % u_sh_texture_width,
+        linear_index / u_sh_texture_width
+    );
+    return texelFetch(u_sh_data, location, 0).rgb;
+}
+
+vec3 evaluate_sh_color(int point_index, vec3 position, vec3 dc_color) {
+    if (u_sh_degree == 0) {
+        return dc_color;
+    }
+
+    vec3 direction = position - u_camera_position;
+    direction /= max(length(direction), 1e-7);
+    float x = direction.x;
+    float y = direction.y;
+    float z = direction.z;
+    float xx = x * x;
+    float yy = y * y;
+    float zz = z * z;
+
+    vec3 color = dc_color
+        - 0.4886025119029199 * y * fetch_sh(point_index, 0)
+        + 0.4886025119029199 * z * fetch_sh(point_index, 1)
+        - 0.4886025119029199 * x * fetch_sh(point_index, 2);
+    if (u_sh_degree > 1) {
+        color +=
+            1.0925484305920792 * x * y * fetch_sh(point_index, 3)
+            - 1.0925484305920792 * y * z * fetch_sh(point_index, 4)
+            + 0.31539156525252005 * (2.0 * zz - xx - yy)
+                * fetch_sh(point_index, 5)
+            - 1.0925484305920792 * x * z * fetch_sh(point_index, 6)
+            + 0.5462742152960396 * (xx - yy) * fetch_sh(point_index, 7);
+    }
+    if (u_sh_degree > 2) {
+        color +=
+            -0.5900435899266435 * y * (3.0 * xx - yy)
+                * fetch_sh(point_index, 8)
+            + 2.890611442640554 * x * y * z * fetch_sh(point_index, 9)
+            - 0.4570457994644658 * y * (4.0 * zz - xx - yy)
+                * fetch_sh(point_index, 10)
+            + 0.3731763325901154 * z * (2.0 * zz - 3.0 * xx - 3.0 * yy)
+                * fetch_sh(point_index, 11)
+            - 0.4570457994644658 * x * (4.0 * zz - xx - yy)
+                * fetch_sh(point_index, 12)
+            + 1.445305721320277 * z * (xx - yy) * fetch_sh(point_index, 13)
+            - 0.5900435899266435 * x * (xx - 3.0 * yy)
+                * fetch_sh(point_index, 14);
+    }
+    return max(color, vec3(0.0));
+}
+
 int fetch_draw_index(int linear_index) {
     ivec2 location = ivec2(
         linear_index % u_order_texture_width,
@@ -83,7 +142,7 @@ void main() {
     vec4 covariance_b_data = fetch_scene(point_index * 4 + 3);
     vec3 in_position = position_opacity.xyz;
     float in_opacity = position_opacity.w;
-    vec3 in_color = color_data.xyz;
+    vec3 in_color = evaluate_sh_color(point_index, in_position, color_data.xyz);
     vec3 in_covariance_a = covariance_a_data.xyz;
     vec3 in_covariance_b = covariance_b_data.xyz;
 
@@ -287,6 +346,24 @@ void main() {
         glow
     );
     out_color = vec4(clamp(background, 0.0, 1.0), 1.0);
+}
+"""
+
+
+_UNPREMULTIPLY_FRAGMENT_SHADER = r"""
+#version 330
+
+uniform sampler2D u_composite;
+
+in vec2 v_uv;
+layout(location = 0) out vec4 out_color;
+
+void main() {
+    vec4 composite = texture(u_composite, v_uv);
+    vec3 straight_color = composite.a > (1.0 / 65535.0)
+        ? composite.rgb / composite.a
+        : vec3(0.0);
+    out_color = vec4(clamp(straight_color, 0.0, 1.0), composite.a);
 }
 """
 
@@ -524,6 +601,24 @@ def probe_renderer() -> str:
 class GpuRenderer:
     def __init__(self, scene: SceneData) -> None:
         self.scene = scene
+        sh_coefficients = scene.sh_coefficients
+        if sh_coefficients is not None and (
+            sh_coefficients.ndim != 3
+            or sh_coefficients.shape[0] != scene.count
+            or sh_coefficients.shape[2] != 3
+        ):
+            raise ValueError("SH coefficients must have shape (point count, coefficient count, 3)")
+        self.sh_coefficient_count = (
+            min(int(sh_coefficients.shape[1]), 15) if sh_coefficients is not None else 0
+        )
+        self.sh_degree = max(
+            (
+                degree
+                for degree in range(1, 4)
+                if (degree + 1) ** 2 - 1 <= self.sh_coefficient_count
+            ),
+            default=0,
+        )
         self.context = create_context()
         self.program = self.context.program(
             vertex_shader=_VERTEX_SHADER,
@@ -532,6 +627,10 @@ class GpuRenderer:
         self.background_program = self.context.program(
             vertex_shader=_COMPOSITE_VERTEX_SHADER,
             fragment_shader=_BACKGROUND_FRAGMENT_SHADER,
+        )
+        self.unpremultiply_program = self.context.program(
+            vertex_shader=_COMPOSITE_VERTEX_SHADER,
+            fragment_shader=_UNPREMULTIPLY_FRAGMENT_SHADER,
         )
 
         corners = np.array(
@@ -544,6 +643,7 @@ class GpuRenderer:
             [(self.corner_buffer, "2f", "in_corner")],
         )
         self.background_array = self.context.vertex_array(self.background_program, [])
+        self.unpremultiply_array = self.context.vertex_array(self.unpremultiply_program, [])
 
         maximum_texture_size = int(self.context.info.get("GL_MAX_TEXTURE_SIZE", 16384))
         self.scene_texture_width = min(4096, maximum_texture_size)
@@ -575,6 +675,39 @@ class GpuRenderer:
         self.scene_texture.repeat_x = False
         self.scene_texture.repeat_y = False
 
+        if self.sh_degree:
+            self.sh_texture_width = min(4096, maximum_texture_size)
+            sh_texel_count = scene.count * self.sh_coefficient_count
+            sh_texture_height = math.ceil(sh_texel_count / self.sh_texture_width)
+            if sh_texture_height > maximum_texture_size:
+                raise RuntimeError(
+                    f"Scene needs a {self.sh_texture_width} x {sh_texture_height} SH data "
+                    f"texture, but this GPU supports at most {maximum_texture_size} x "
+                    f"{maximum_texture_size}"
+                )
+            sh_storage = np.zeros(
+                (sh_texture_height * self.sh_texture_width, 3),
+                dtype=np.float32,
+            )
+            assert sh_coefficients is not None
+            sh_storage[:sh_texel_count] = sh_coefficients[
+                :, : self.sh_coefficient_count, :
+            ].reshape(-1, 3)
+            sh_texture_size = (self.sh_texture_width, sh_texture_height)
+        else:
+            self.sh_texture_width = 1
+            sh_storage = np.zeros((1, 3), dtype=np.float32)
+            sh_texture_size = (1, 1)
+        self.sh_texture = self.context.texture(
+            sh_texture_size,
+            3,
+            data=sh_storage.tobytes(),
+            dtype="f4",
+        )
+        self.sh_texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        self.sh_texture.repeat_x = False
+        self.sh_texture.repeat_y = False
+
         self.order_texture_width = min(4096, maximum_texture_size)
         order_texture_height = math.ceil(scene.count / self.order_texture_width)
         self.order_storage = np.zeros(
@@ -595,6 +728,8 @@ class GpuRenderer:
 
         self.render_texture: moderngl.Texture | None = None
         self.render_framebuffer: moderngl.Framebuffer | None = None
+        self.alpha_texture: moderngl.Texture | None = None
+        self.alpha_framebuffer: moderngl.Framebuffer | None = None
         self.target_size = (0, 0)
         self.height_bounds = {
             axis: tuple(
@@ -609,6 +744,8 @@ class GpuRenderer:
 
     def _release_targets(self) -> None:
         for value in (
+            self.alpha_framebuffer,
+            self.alpha_texture,
             self.render_framebuffer,
             self.render_texture,
         ):
@@ -616,16 +753,25 @@ class GpuRenderer:
                 value.release()
         self.render_texture = None
         self.render_framebuffer = None
+        self.alpha_texture = None
+        self.alpha_framebuffer = None
         self.target_size = (0, 0)
 
-    def _ensure_targets(self, width: int, height: int) -> None:
-        if self.target_size == (width, height):
-            return
-        self._release_targets()
-        self.render_texture = self.context.texture((width, height), 4, dtype="f2")
-        self.render_texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
-        self.render_framebuffer = self.context.framebuffer(color_attachments=[self.render_texture])
-        self.target_size = (width, height)
+    def _ensure_targets(self, width: int, height: int, *, alpha_output: bool = False) -> None:
+        if self.target_size != (width, height):
+            self._release_targets()
+            self.render_texture = self.context.texture((width, height), 4, dtype="f2")
+            self.render_texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            self.render_framebuffer = self.context.framebuffer(
+                color_attachments=[self.render_texture]
+            )
+            self.target_size = (width, height)
+        if alpha_output and self.alpha_framebuffer is None:
+            self.alpha_texture = self.context.texture((width, height), 4, dtype="f1")
+            self.alpha_texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            self.alpha_framebuffer = self.context.framebuffer(
+                color_attachments=[self.alpha_texture]
+            )
 
     @staticmethod
     def _write_matrix(uniform: moderngl.Uniform, matrix: np.ndarray) -> None:
@@ -661,6 +807,10 @@ class GpuRenderer:
             eye_offset = _orbit_eye(up, camera_angle, settings.elevation, distance)
             eye = target + eye_offset
         view = _look_at(eye, target, up, -eye_offset)
+        source_camera = np.linalg.solve(
+            model,
+            np.array([eye[0], eye[1], eye[2], 1.0], dtype=np.float32),
+        )[:3]
         near = max(min(self.scene.radius * 0.01, distance * 0.02), 1e-6)
         far = max(
             float(np.linalg.norm(eye))
@@ -702,6 +852,9 @@ class GpuRenderer:
         }[transition_effect]
         self.program["u_scene_center"].value = tuple(float(value) for value in self.scene.center)
         self.program["u_scene_radius"].value = self.scene.radius
+        self.program["u_camera_position"].value = tuple(
+            float(value) for value in source_camera
+        )
         pixel_scale = min(settings.width, settings.height) / 1080.0
         self.program["u_pixel_scale"].value = pixel_scale
         self.program["u_point_radius"].value = settings.point_radius * pixel_scale
@@ -713,7 +866,11 @@ class GpuRenderer:
         self.program["u_exposure"].value = settings.exposure
         self.program["u_scene_data"].value = 0
         self.program["u_draw_order"].value = 1
+        self.program["u_sh_data"].value = 2
         self.program["u_scene_texture_width"].value = self.scene_texture_width
+        self.program["u_sh_texture_width"].value = self.sh_texture_width
+        self.program["u_sh_coefficient_count"].value = self.sh_coefficient_count
+        self.program["u_sh_degree"].value = self.sh_degree
         self.program["u_order_texture_width"].value = self.order_texture_width
 
         depth_row = np.asarray((view @ model)[2], dtype=np.float32)
@@ -737,15 +894,20 @@ class GpuRenderer:
             self.order_texture.write(self.order_storage.tobytes())
             self._last_depth_row = depth_row.copy()
 
-    def render_rgb(
+    def _render_frame(
         self,
         settings: AnimationSettings,
         seconds: float,
         *,
+        transparent: bool,
         sort_depth: bool = True,
     ) -> bytes:
         settings.validate()
-        self._ensure_targets(settings.width, settings.height)
+        self._ensure_targets(
+            settings.width,
+            settings.height,
+            alpha_output=transparent,
+        )
         assert self.render_framebuffer is not None
 
         self._set_uniforms(settings, seconds, sort_depth=sort_depth)
@@ -753,14 +915,23 @@ class GpuRenderer:
         self.context.viewport = (0, 0, settings.width, settings.height)
         self.context.disable(moderngl.BLEND)
         self.context.disable(moderngl.DEPTH_TEST)
-        self.background_program["u_background"].value = _hex_color(settings.background)
-        self.background_program["u_background_gradient"].value = settings.background_gradient
-        self.background_array.render(mode=moderngl.TRIANGLES, vertices=3)
+        if transparent:
+            self.render_framebuffer.clear(0.0, 0.0, 0.0, 0.0)
+        else:
+            self.background_program["u_background"].value = _hex_color(settings.background)
+            self.background_program["u_background_gradient"].value = settings.background_gradient
+            self.background_array.render(mode=moderngl.TRIANGLES, vertices=3)
 
         self.scene_texture.use(location=0)
         self.order_texture.use(location=1)
+        self.sh_texture.use(location=2)
         self.context.enable(moderngl.BLEND)
-        self.context.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+        self.context.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+            moderngl.ONE,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+        )
         self.vertex_array.render(
             mode=moderngl.TRIANGLE_STRIP,
             vertices=4,
@@ -768,21 +939,62 @@ class GpuRenderer:
         )
         self.context.disable(moderngl.BLEND)
 
-        # OpenGL converts the half-float compositing target directly to RGB8
-        # during readback; a second texture and fullscreen present pass only
-        # added bandwidth and synchronization work.
+        if transparent:
+            if settings.premultiplied_alpha:
+                return self.render_framebuffer.read(components=4, alignment=1, dtype="f1")
+            assert self.alpha_framebuffer is not None
+            assert self.render_texture is not None
+            self.alpha_framebuffer.use()
+            self.render_texture.use(location=0)
+            self.unpremultiply_program["u_composite"].value = 0
+            self.unpremultiply_array.render(mode=moderngl.TRIANGLES, vertices=3)
+            return self.alpha_framebuffer.read(components=4, alignment=1, dtype="f1")
+
         return self.render_framebuffer.read(components=3, alignment=1, dtype="f1")
+
+    def render_frame(
+        self,
+        settings: AnimationSettings,
+        seconds: float,
+        *,
+        sort_depth: bool = True,
+    ) -> bytes:
+        """Render opaque RGB or transparent straight/premultiplied RGBA."""
+        return self._render_frame(
+            settings,
+            seconds,
+            transparent=settings.transparent_background,
+            sort_depth=sort_depth,
+        )
+
+    def render_rgb(
+        self,
+        settings: AnimationSettings,
+        seconds: float,
+        *,
+        sort_depth: bool = True,
+    ) -> bytes:
+        """Render an opaque RGB frame, retained for API compatibility."""
+        return self._render_frame(
+            settings,
+            seconds,
+            transparent=False,
+            sort_depth=sort_depth,
+        )
 
     def close(self) -> None:
         self._release_targets()
         for value in (
             self.vertex_array,
             self.background_array,
+            self.unpremultiply_array,
             self.corner_buffer,
             self.scene_texture,
+            self.sh_texture,
             self.order_texture,
             self.program,
             self.background_program,
+            self.unpremultiply_program,
         ):
             value.release()
         self.context.release()
@@ -824,7 +1036,7 @@ def _codec_arguments(settings: AnimationSettings) -> list[str]:
         ]
     if settings.codec == "prores":
         return ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"]
-    return [
+    arguments = [
         "-c:v",
         "libvpx-vp9",
         "-crf",
@@ -834,8 +1046,11 @@ def _codec_arguments(settings: AnimationSettings) -> list[str]:
         "-row-mt",
         "1",
         "-pix_fmt",
-        "yuv420p",
+        "yuva420p" if settings.transparent_background else "yuv420p",
     ]
+    if settings.transparent_background:
+        arguments.extend(("-auto-alt-ref", "0"))
+    return arguments
 
 
 def expected_extension(codec: str) -> str:
@@ -878,7 +1093,7 @@ def render_video(
         "-f",
         "rawvideo",
         "-pixel_format",
-        "rgb24",
+        "rgba" if settings.transparent_background else "rgb24",
         "-video_size",
         f"{settings.width}x{settings.height}",
         "-framerate",
@@ -910,7 +1125,7 @@ def render_video(
         for frame_index in range(settings.frame_count):
             if cancel_event is not None and cancel_event.is_set():
                 raise RenderCancelled("Video render cancelled")
-            frame = renderer.render_rgb(settings, frame_index / settings.fps)
+            frame = renderer.render_frame(settings, frame_index / settings.fps)
             try:
                 process.stdin.write(frame)
             except BrokenPipeError as exc:
