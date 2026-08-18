@@ -1,0 +1,9 @@
+include LICENSE
+include README.md
+include THIRD_PARTY_NOTICES.md
+include TRADEMARKS.md
+include CONTRIBUTING.md
+include CHANGELOG.md
+include RELEASE.md
+include uv.lock
+recursive-include tests *.py

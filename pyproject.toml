@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "splat-animator"
+version = "0.1.0"
+description = "Create turntable and transition videos from Gaussian splats"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "TRADEMARKS.md"]
+authors = [{name = "Reconstrura Splat Animator contributors"}]
+keywords = ["gaussian-splatting", "point-cloud", "animation", "video", "opengl"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Video :: Conversion",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+  "moderngl>=5.12,<6",
+  "numpy>=2.0,<3",
+  "PySide6-Essentials>=6.8,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.12"]
+
+[project.scripts]
+splat-animator = "splat_animator.app:main"
+splat-animator-render = "splat_animator.cli:main"
+reconstrura-splat-animator = "splat_animator.app:main"
+reconstrura-splat-animator-render = "splat_animator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+splat_animator = ["assets/*.b64"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
