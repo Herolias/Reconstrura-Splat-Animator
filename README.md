@@ -12,6 +12,11 @@ Gaussian splats and does not require Reconstrura or a Reconstrura license. The
 Reconstrura logo is used with permission; see the
 [trademark notice](TRADEMARKS.md).
 
+## Demo
+
+https://github.com/user-attachments/assets/28c01291-a220-46c7-b01b-619c5813f46e
+
+
 ## Features
 
 - Gaussian splat and point-cloud rendering
