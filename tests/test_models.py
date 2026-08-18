@@ -40,6 +40,7 @@ def test_one_way_point_to_splat_and_json_round_trip(tmp_path) -> None:
         transparent_background=True,
         premultiplied_alpha=True,
         codec="vp9",
+        bitrate_mbps=12.5,
     )
     assert settings.representation_at(0.5) == RepresentationFrame(0.0, 0.0, 0.0)
     assert settings.representation_at(3.0) == RepresentationFrame(0.0, 1.0, 0.5)
@@ -96,6 +97,12 @@ def test_validation_rejects_odd_video_dimensions() -> None:
     ).validate()
     with pytest.raises(ValueError, match="requires a transparent background"):
         replace(AnimationSettings(), premultiplied_alpha=True).validate()
+    with pytest.raises(ValueError, match="zero or greater"):
+        replace(AnimationSettings(), bitrate_mbps=-1.0).validate()
+    with pytest.raises(ValueError, match="zero or greater"):
+        replace(AnimationSettings(), bitrate_mbps=True).validate()
+    with pytest.raises(ValueError, match="not supported for ProRes"):
+        replace(AnimationSettings(), codec="prores", bitrate_mbps=20.0).validate()
     assert not AnimationSettings().premultiplied_alpha
 
 

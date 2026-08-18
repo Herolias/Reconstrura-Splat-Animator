@@ -1008,14 +1008,18 @@ class GpuRenderer:
 
 def _codec_arguments(settings: AnimationSettings) -> list[str]:
     quality = str(settings.quality)
+    rate_arguments = (
+        ["-b:v", f"{settings.bitrate_mbps:g}M"]
+        if settings.bitrate_mbps > 0
+        else ["-crf", quality]
+    )
     if settings.codec == "h264":
         return [
             "-c:v",
             "libx264",
             "-preset",
             "slow",
-            "-crf",
-            quality,
+            *rate_arguments,
             "-pix_fmt",
             "yuv420p",
             "-movflags",
@@ -1027,8 +1031,7 @@ def _codec_arguments(settings: AnimationSettings) -> list[str]:
             "libx265",
             "-preset",
             "slow",
-            "-crf",
-            quality,
+            *rate_arguments,
             "-pix_fmt",
             "yuv420p",
             "-tag:v",
@@ -1036,13 +1039,13 @@ def _codec_arguments(settings: AnimationSettings) -> list[str]:
         ]
     if settings.codec == "prores":
         return ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"]
+    vp9_rate_arguments = (
+        rate_arguments if settings.bitrate_mbps > 0 else [*rate_arguments, "-b:v", "0"]
+    )
     arguments = [
         "-c:v",
         "libvpx-vp9",
-        "-crf",
-        quality,
-        "-b:v",
-        "0",
+        *vp9_rate_arguments,
         "-row-mt",
         "1",
         "-pix_fmt",

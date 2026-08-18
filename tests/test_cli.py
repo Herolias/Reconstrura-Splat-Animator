@@ -19,3 +19,11 @@ def test_transparent_background_option_uses_alpha_capable_codec() -> None:
     assert settings.transparent_background
     assert settings.premultiplied_alpha
     assert settings.codec == "vp9"
+
+
+def test_bitrate_option_selects_average_bitrate_mode() -> None:
+    arguments = _parser().parse_args(["--bitrate", "8.5"])
+
+    settings = _settings_from_args(arguments)
+
+    assert settings.bitrate_mbps == 8.5

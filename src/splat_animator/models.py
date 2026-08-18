@@ -69,6 +69,7 @@ class AnimationSettings:
 
     codec: str = "h264"
     quality: int = 18
+    bitrate_mbps: float = 0.0
 
     def validate(self) -> None:
         if not isinstance(self.seamless_loop, bool):
@@ -187,6 +188,15 @@ class AnimationSettings:
             raise ValueError(
                 f"{self.codec.upper()} quality must be between 0 and {maximum_quality}"
             )
+        if (
+            not isinstance(self.bitrate_mbps, (int, float))
+            or isinstance(self.bitrate_mbps, bool)
+            or not math.isfinite(self.bitrate_mbps)
+            or self.bitrate_mbps < 0
+        ):
+            raise ValueError("Target bitrate must be zero or greater")
+        if self.codec == "prores" and self.bitrate_mbps > 0:
+            raise ValueError("Target bitrate is not supported for ProRes output")
 
     @property
     def frame_count(self) -> int:

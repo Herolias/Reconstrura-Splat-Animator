@@ -24,6 +24,7 @@ Reconstrura logo is used with permission; see the
 - GPU preview with mouse and keyboard camera controls
 - MP4 H.264/H.265, ProRes MOV, and VP9 WebM output through FFmpeg
 - Transparent-background VP9 WebM export
+- CRF or target-bitrate encoding with an approximate file-size estimate
 - Full HD, 4K, square, vertical, and custom resolutions
 - Reconstrura and standard 3DGS project discovery
 - Optional point limit for large scenes
@@ -261,6 +262,10 @@ reconstrura-splat-animator-render \
 
 Use `--no-transformation --start-as point` for a point-cloud-only turntable, or
 `--no-transformation --start-as splat` for a splat-only render.
+
+Set **Target bitrate** for more predictable file sizes, or leave it at
+**Use CRF** for automatic quality. The CLI equivalent is `--bitrate 8` for
+approximately 8 Mb/s.
 
 For transparency, enable **Transparent background**. **Black fallback** turns on
 automatically for clean playback in Apps that do not support transparent backgrounds ; turn it off when

@@ -1116,6 +1116,22 @@ class MainWindow(QMainWindow):
             "Lower CRF means higher quality and larger files.",
         )
 
+        self.bitrate_spin = self._double_spin(
+            0.0,
+            500.0,
+            0.0,
+            decimals=1,
+            step=1.0,
+            suffix=" Mb/s",
+        )
+        self.bitrate_spin.setSpecialValueText("Use CRF")
+        self._field(
+            layout,
+            "Target bitrate",
+            self.bitrate_spin,
+            "Set a bitrate for predictable file size, or use CRF for automatic quality.",
+        )
+
         self.output_line = QLineEdit()
         self.output_line.setPlaceholderText("promo.mp4")
         self.output_browse = QPushButton("Browse")
@@ -1169,6 +1185,7 @@ class MainWindow(QMainWindow):
         self.reset_camera_button.clicked.connect(self._reset_camera)
         self.resolution_preset.currentIndexChanged.connect(self._resolution_preset_changed)
         self.codec_combo.currentIndexChanged.connect(self._codec_changed)
+        self.bitrate_spin.valueChanged.connect(self._bitrate_changed)
         self.trip_mode.currentIndexChanged.connect(self._trip_mode_changed)
         self.loop_toggle.toggled.connect(self._loop_toggled)
         self.rotation_center_mode.currentIndexChanged.connect(self._rotation_center_mode_changed)
@@ -1264,6 +1281,7 @@ class MainWindow(QMainWindow):
             premultiplied_alpha=self.premultiplied_alpha.isChecked(),
             codec=str(self.codec_combo.currentData()),
             quality=self.quality_spin.value(),
+            bitrate_mbps=self.bitrate_spin.value(),
         )
         return settings.resolved_for_loop() if resolve_loop else settings
 
@@ -1322,6 +1340,7 @@ class MainWindow(QMainWindow):
         self.transparent_background.setChecked(settings.transparent_background)
         self.premultiplied_alpha.setChecked(settings.premultiplied_alpha)
         self.quality_spin.setValue(settings.quality)
+        self.bitrate_spin.setValue(settings.bitrate_mbps)
         self._update_background_button()
         self._match_resolution_preset()
         self._trip_mode_changed()
@@ -1382,10 +1401,14 @@ class MainWindow(QMainWindow):
         self.timeline_summary.setText(text)
         self.timeline_summary.style().unpolish(self.timeline_summary)
         self.timeline_summary.style().polish(self.timeline_summary)
-        self.render_estimate.setText(
+        estimate = (
             f"{settings.frame_count:,} frames, {settings.width:,} × "
             f"{settings.height:,}, {settings.fps} fps"
         )
+        if settings.bitrate_mbps > 0:
+            estimated_size = settings.bitrate_mbps * settings.duration / 8.0
+            estimate += f", about {estimated_size:,.1f} MB"
+        self.render_estimate.setText(estimate)
         self._update_time_label()
 
     def _trip_mode_changed(self, *_args: object) -> None:
@@ -1887,7 +1910,16 @@ class MainWindow(QMainWindow):
         if path:
             self.output_line.setText(str(path.with_suffix(expected_extension(codec))))
         self.quality_spin.setMaximum(63 if codec == "vp9" else 51)
-        self.quality_spin.setEnabled(codec != "prores")
+        if codec == "prores" and self.bitrate_spin.value() > 0:
+            self.bitrate_spin.setValue(0.0)
+        self.bitrate_spin.setEnabled(codec != "prores")
+        self.quality_spin.setEnabled(codec != "prores" and self.bitrate_spin.value() == 0)
+        self._settings_changed()
+
+    def _bitrate_changed(self, bitrate: float) -> None:
+        self.quality_spin.setEnabled(
+            self.codec_combo.currentData() != "prores" and bitrate == 0
+        )
         self._settings_changed()
 
     def _choose_output(self) -> None:

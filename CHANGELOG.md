@@ -8,6 +8,7 @@ Notable changes to this project are documented here.
 - Added transparent-background preview and VP9 WebM export.
 - Added a premultiplied-alpha fallback that switches on with transparent output
   for alpha-blind video players, with a straight-alpha compositing opt-out.
+- Added optional target-bitrate encoding with an estimated output file size.
 
 ## 0.1.0 - 2026-08-18
 

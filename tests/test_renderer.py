@@ -10,7 +10,12 @@ import pytest
 
 from splat_animator.io import load_scene
 from splat_animator.models import AnimationSettings
-from splat_animator.renderer import GpuRenderer, render_video, rotation_center_offset
+from splat_animator.renderer import (
+    GpuRenderer,
+    _codec_arguments,
+    render_video,
+    rotation_center_offset,
+)
 
 from .helpers import write_gaussian_ply
 
@@ -238,6 +243,16 @@ def test_premultiplied_alpha_rgb_matches_black_background(tmp_path: Path) -> Non
     assert int(rgba[:, :, 3].max()) > 0
 
 
+@pytest.mark.parametrize("codec", ["h264", "h265", "vp9"])
+def test_target_bitrate_replaces_crf(codec: str) -> None:
+    settings = replace(AnimationSettings(), codec=codec, bitrate_mbps=8.5)
+
+    arguments = _codec_arguments(settings)
+
+    assert arguments[arguments.index("-b:v") + 1] == "8.5M"
+    assert "-crf" not in arguments
+
+
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg is not installed")
 def test_ffmpeg_video_export(tmp_path: Path) -> None:
     scene = load_scene(write_gaussian_ply(tmp_path / "scene.ply", 100), budget=None)
@@ -250,6 +265,7 @@ def test_ffmpeg_video_export(tmp_path: Path) -> None:
         transition_start=0.0,
         transition_duration=0.2,
         round_trip=False,
+        bitrate_mbps=1.0,
     )
     output = tmp_path / "animation.mp4"
     renderer = _renderer_or_skip(scene)

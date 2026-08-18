@@ -168,6 +168,7 @@ def test_main_window_starts_and_stops_render_thread() -> None:
         AnimationSettings(),
         codec="vp9",
         quality=63,
+        bitrate_mbps=12.5,
         transparent_background=True,
         premultiplied_alpha=True,
         min_splat_pixels=1.25,
@@ -177,6 +178,9 @@ def test_main_window_starts_and_stops_render_thread() -> None:
     restored = window._settings(resolve_loop=False)
     assert window.quality_spin.maximum() == 63
     assert restored.quality == 63
+    assert restored.bitrate_mbps == 12.5
+    assert not window.quality_spin.isEnabled()
+    assert "about 18.8 MB" in window.render_estimate.text()
     assert restored.transparent_background
     assert restored.premultiplied_alpha
     assert window.premultiplied_alpha.isEnabled()
@@ -189,6 +193,13 @@ def test_main_window_starts_and_stops_render_thread() -> None:
     assert not window.transparent_background.isChecked()
     assert not window.premultiplied_alpha.isChecked()
     assert not window.premultiplied_alpha.isEnabled()
+    window.bitrate_spin.setValue(0.0)
+    application.processEvents()
+    assert window.quality_spin.isEnabled()
+    window._set_combo(window.codec_combo, "prores")
+    application.processEvents()
+    assert not window.bitrate_spin.isEnabled()
+    assert not window.quality_spin.isEnabled()
     window.close()
     assert not window.worker_thread.isRunning()
 

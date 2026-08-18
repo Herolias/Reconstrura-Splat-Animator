@@ -164,6 +164,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--codec", choices=("h264", "h265", "prores", "vp9"))
     parser.add_argument("--quality", type=int, help="CRF for H.264/H.265/VP9")
+    parser.add_argument(
+        "--bitrate",
+        "--bitrate-mbps",
+        type=float,
+        dest="bitrate_mbps",
+        help="Target average bitrate in Mb/s (0 uses CRF)",
+    )
     return parser
 
 
