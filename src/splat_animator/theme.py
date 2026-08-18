@@ -90,7 +90,6 @@ QPushButton#navButton:hover {{ color: {COLORS["text"]}; background: #131a26; }}
 QPushButton#navButton:checked {{
     color: #dce6ff;
     background: #18243b;
-    border-left: 2px solid {COLORS["blue"]};
 }}
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     min-height: 34px;
