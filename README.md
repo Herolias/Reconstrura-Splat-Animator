@@ -1,7 +1,7 @@
 # Reconstrura Splat Animator
 
-Reconstrura Splat Animator creates turntable videos from Gaussian splats. A
-scan can change the splat into a point cloud and back again.
+Reconstrura Splat Animator creates turntable videos from Gaussian splats and can
+transform the splat into a point cloud and back again.
 
 Use the desktop app or the command-line renderer. Both can open Reconstrura
 projects, standard 3DGS projects, and individual `.ply` or `.splat` files.
@@ -100,7 +100,7 @@ first installation can take a few minutes while files are downloaded.
    uv run reconstrura-splat-animator
    ```
 
-### Linux (Ubuntu or Debian)
+### Linux: Ubuntu or Debian (and every other distro, see below)
 
 Reconstrura Splat Animator also works on other Linux distributions. The package
 names and installation commands differ, but you only need Git, FFmpeg, `curl`,
@@ -262,18 +262,10 @@ reconstrura-splat-animator-render \
 Use `--no-transformation --start-as point` for a point-cloud-only turntable, or
 `--no-transformation --start-as splat` for a splat-only render.
 
-For a video with an alpha channel, enable **Transparent background** in the GUI;
-this selects VP9 WebM output automatically. From the CLI, combine
-`--transparent-background` with `--codec vp9`. H.264, H.265, and ProRes output
-remain opaque in this application.
-
-**Black fallback for alpha-blind players** switches on automatically when
-**Transparent background** is selected and remains off for normal background
-videos. It makes the WebM look like a normal black-background render in players
-such as VLC and Dragon Player by storing premultiplied RGB. Disable it in the
-GUI—or add `--straight-alpha` on the CLI—for editors and compositors that expect
-standard straight alpha. `--premultiplied-alpha` can explicitly enable it when
-overriding a preset.
+For transparency, enable **Transparent background**. **Black fallback** turns on
+automatically for clean playback in Apps that do not support transparent backgrounds ; turn it off when
+exporting for a video editor. On the CLI, use
+`--transparent-background --codec vp9` and add `--straight-alpha` for editors.
 
 The CLI will not replace an existing video unless `--force` is supplied. The
 GUI asks before replacing one.
@@ -300,14 +292,6 @@ render.
 The renderer sorts loaded Gaussians by camera depth and composites them
 back-to-front with alpha blending. It uses the full projected 3D covariance and
 view-dependent spherical harmonics through degree 3.
-
-Transparent VP9 WebM automatically enables premultiplied RGB. This fixes
-alpha-blind playback on black, but an alpha-aware compositor that assumes
-straight alpha can multiply it a second time and create dark edges. Disable
-**Black fallback for alpha-blind players** to export straight (unassociated)
-RGB for those compositors. General-purpose players that ignore the alpha plane
-can then make normally faint Gaussian edge pixels look bright and fuzzy. The
-setting is inactive for normal background videos.
 
 Point size is defined at 1080p and scales with the preview and output
 resolution. Videos use BT.709 limited-range color.
